@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>30 يومًا: نظّم حياتك</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;800&display=swap">
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{--bg:#F7F4EC;--ink:#17332F;--green:#1E6F5C;--gold:#D9A02B;--mut:#4F605C;--line:#CFC8B8}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-family:Cairo,sans-serif;padding-bottom:84px}
+#app{max-width:480px;margin:0 auto;padding:24px 18px;display:flex;flex-direction:column;gap:12px}
+h1{margin:0;font-size:26px;font-weight:800}h2{margin:6px 0 0;font-size:18px;font-weight:800}
+.mut{color:var(--mut);font-size:14px;line-height:1.7;margin:0}.card{background:#fff;border-radius:18px;padding:14px}
+.hero{background:var(--ink);color:#fff;border-radius:22px;padding:18px}.bar{height:10px;border-radius:5px;background:#ffffff33;margin-top:10px}.bar i{display:block;height:10px;border-radius:5px;background:var(--gold)}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.grid .card{text-align:center;padding:10px}.grid b{font-size:21px;display:block}
+button,input,select,textarea{font:inherit}button{border:0;border-radius:14px;min-height:48px;font-weight:600;cursor:pointer;background:var(--green);color:#fff;padding:0 14px}
+button.alt{background:#fff;color:var(--ink);border:1px solid var(--line)}button.dark{background:var(--ink)}button:disabled{opacity:.5}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+input,select,textarea{width:100%;min-height:46px;border:1px solid var(--line);border-radius:12px;padding:8px 12px;background:#fff;color:var(--ink)}
+.row{display:flex;gap:8px}.row>*{flex:1}.tag{display:inline-block;border-radius:10px;padding:2px 12px;font-weight:800;font-size:15px;color:#fff}
+.lv button{min-height:42px;font-size:14px;background:#EDE8DC;color:var(--ink)}.lv button.on.full{background:var(--green);color:#fff}.lv button.on.partial{background:var(--gold)}.lv button.on.none{background:var(--ink);color:#fff}
+.err{background:#F3D9D2;border-radius:14px;padding:14px;line-height:1.7}.ok{background:#DCEBDD;border-radius:14px;padding:14px}
+nav{position:fixed;bottom:0;inset-inline:0;background:#fff;border-top:1px solid var(--line);display:flex;justify-content:space-around;padding:6px 0 calc(6px + env(safe-area-inset-bottom))}
+nav button{background:none;color:var(--mut);min-height:44px}nav button.on{color:var(--green);font-weight:800}
+.rk{display:flex;justify-content:space-between;padding:10px 12px;background:#fff;border-radius:12px}.rk.me{outline:2px solid var(--gold)}
+canvas{width:100%;border-radius:18px;background:#fff}label{font-weight:600;font-size:14px}.f{display:flex;flex-direction:column;gap:4px}
+</style>
+</head>
+<body>
+<div id="app" aria-live="polite"><p class="mut">جارٍ التحقق من حسابك…</p></div>
+<nav id="nav" hidden></nav>
+<script>
+const API_URL = 'https://script.google.com/macros/s/AKfycbzBeE9va7pYueaYqpQr2JdETS5x7oVuTqKDcMS6aIgB_7F3iB366jBhqz1vX5Ab1XfJ/exec';   // الرابط الوحيد المطلوب تعديله في هذا الملف
+const tg = window.Telegram && window.Telegram.WebApp;
+const $ = s => document.querySelector(s);
+const N = x => Number(x).toLocaleString('en-US', {useGrouping:false});
+const esc = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const ERR = {AUTH_MISSING:'افتح التطبيق من داخل بوت تيليجرام.',AUTH_BAD_SIGNATURE:'تعذّر التحقق من هويتك. أعد فتح التطبيق من البوت.',AUTH_EXPIRED:'انتهت الجلسة. أغلق التطبيق وافتحه من البوت من جديد.',
+ E_BAD_CODE:'الكود يجب أن يتكون من 5 أحرف إنجليزية أو أرقام.',E_CODE_TAKEN:'هذا الكود مستخدم. اختر كودًا آخر.',E_RATE:'محاولات كثيرة. حاول بعد ساعة.',E_ALREADY:'أنت مسجل مسبقًا.',
+ E_EDIT_LIMIT:'استنفدت عدد تعديلات تقرير اليوم.',E_NO_REPORT:'أرسل تقرير اليوم أولًا لتصدر البطاقة.',E_BAD_INPUT:'تحقق من البيانات المدخلة.',FORBIDDEN:'لا تملك صلاحية هذا الإجراء.',E_NO_CHALLENGE:'لا يوجد تحدٍ نشط.',E_OUT_OF_RANGE:'التحدي ليس جاريًا اليوم.'};
+const TYPES = {core:['المهام الأساسية','#1E6F5C'],featured:['المهمة المميزة','#8A6200'],habit:['العادات المستمرة','#2B6A8A'],daily_challenge:['تحدي اليوم','#B5472F']};
+let S = {tab:'home', levels:{}, d:null};
+
+function api(action, payload) {
+  return fetch(API_URL, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'}, body:JSON.stringify({action, initData: tg ? tg.initData : '', payload: payload || {}})})
+    .then(r => r.json()).then(j => { if (!j.ok) throw new Error(j.error || 'SERVER_ERROR'); return j.data; });
+}
+const msg = e => ERR[e.message] || 'حدث خطأ. حاول مرة أخرى.';
+function say(html, cls) { const b = $('#note'); if (b) b.innerHTML = '<div class="' + cls + '" role="alert">' + html + '</div>'; }
+function load() { return api('today').then(d => { S.d = d; if (d.report) S.levels = Object.assign({}, d.report.levels); show(); }).catch(e => { $('#app').innerHTML = '<div class="err">' + esc(msg(e)) + '</div>'; }); }
+
+function show() {
+  const d = S.d, app = $('#app'), nav = $('#nav');
+  if (d.me.state === 'blocked') { app.innerHTML = '<div class="err">حسابك غير متاح حاليًا. تواصل مع الإدارة.</div>'; return; }
+  if (d.me.state === 'new') { nav.hidden = true; return regView(); }
+  const tabs = [['home','الرئيسية'],['rank','الترتيب'],['card','البطاقة']].concat(d.me.isAdmin ? [['admin','الإدارة']] : []);
+  nav.hidden = false; nav.innerHTML = tabs.map(t => '<button data-tab="' + t[0] + '" class="' + (S.tab === t[0] ? 'on' : '') + '">' + t[1] + '</button>').join('');
+  ({home: homeView, rank: rankView, card: cardView, admin: adminView})[S.tab]();
+}
+
+function regView() {
+  $('#app').innerHTML = '<h1>مرحبًا بك في التحدي</h1><p class="mut">التسجيل مرة واحدة فقط. اختر كودًا من 5 أحرف وأرقام إنجليزية ليكون معرّفك، ولن نطلب منك أي بيانات أخرى. لا يمكن تغيير الكود بعد التأكيد.</p>' +
+  '<div class="f"><label for="code">كود المشارك</label><input id="code" maxlength="5" dir="ltr" placeholder="مثال: A7K29" style="text-align:center;font-size:24px;letter-spacing:6px;font-weight:800" autocomplete="off"></div><div id="note"></div><button id="reg">تأكيد التسجيل</button>';
+  $('#reg').onclick = () => { const b = $('#reg'); b.disabled = true;
+    api('register', {code: $('#code').value}).then(load).catch(e => { say(esc(msg(e)), 'err'); b.disabled = false; }); };
+}
+
+function homeView() {
+  const d = S.d; let h = '<div class="hero"><div class="mut" style="color:#ffffffcc">' + esc(d.name) + '</div>';
+  if (d.day < 1) h += '<div style="font-size:24px;font-weight:800">يبدأ التحدي قريبًا</div></div>';
+  else if (d.day > d.duration) h += '<div style="font-size:24px;font-weight:800">انتهى التحدي، بارك الله جهدك</div></div>';
+  else h += '<div style="font-size:36px;font-weight:800">اليوم ' + N(d.day) + ' <span style="font-size:16px;font-weight:400">من ' + N(d.duration) + ' · متبقٍ ' + N(d.duration - d.day) + '</span></div><div class="bar"><i style="width:' + Math.round(d.day / d.duration * 100) + '%"></i></div></div>';
+  if (!d.stats || d.day < 1 || d.day > d.duration) { $('#app').innerHTML = h + '<div class="card">كودك: <b dir="ltr">' + esc(d.me.code) + '</b></div>'; return; }
+  h += '<div class="grid"><div class="card"><b>' + N(d.stats.total) + '</b><span class="mut">المجموع</span></div><div class="card"><b>' + N(d.stats.streak) + '</b><span class="mut">السلسلة</span></div><div class="card"><b>' + N(d.stats.longest) + '</b><span class="mut">أطول سلسلة</span></div></div>';
+  if (!d.stats.track) h += '<div class="card"><b>ما وضعك؟</b><p class="mut">يحدد ذلك المهام المناسبة لك.</p><div class="row"><button data-track="student">طالب</button><button data-track="other" class="dark">غير طالب</button></div></div>';
+  Object.keys(TYPES).forEach(ty => { const ts = d.tasks.filter(t => t.type === ty); if (!ts.length) return;
+    h += '<h2><span class="tag" style="background:' + TYPES[ty][1] + '">' + TYPES[ty][0] + '</span></h2>';
+    ts.forEach(t => { const cur = S.levels[t.id];
+      h += '<div class="card"><div class="row" style="justify-content:space-between"><b>' + esc(t.title) + '</b><span style="flex:none;color:var(--green);font-weight:800">' + N(t.points) + ' نقطة</span></div><p class="mut">' + esc(d.axes[t.axis] || '') + (t.desc ? ' · ' + esc(t.desc) : '') + '</p>' +
+      (t.full ? '<p class="mut">كامل: ' + esc(t.full) + (t.partial ? ' | جزئي: ' + esc(t.partial) : '') + '</p>' : '') +
+      '<div class="row lv">' + [['full','كامل'],['partial','جزئي'],['none','لم أنجز']].map(l => '<button data-t="' + t.id + '" data-l="' + l[0] + '" class="' + l[0] + (cur === l[0] ? ' on' : '') + '">' + l[1] + '</button>').join('') + '</div></div>'; }); });
+  if (!d.tasks.length) h += '<div class="card mut">لا توجد مهام منشورة لك اليوم.</div>';
+  const r = d.report;
+  h += '<div id="note">' + (r ? '<div class="ok">أُرسل تقرير اليوم: ' + N(r.pct) + '% · ' + N(r.earned) + ' نقطة. تعديلات متاحة اليوم: ' + N(r.editsLeft) + '</div>' : '') + '</div>';
+  h += '<button id="send"' + (d.tasks.length && (!r || r.editsLeft > 0) ? '' : ' disabled') + '>' + (r ? 'تعديل التقرير' : 'إرسال تقرير اليوم') + '</button>';
+  $('#app').innerHTML = h;
+}
+function send() { const b = $('#send'); b.disabled = true;
+  api('submit', {levels: S.levels}).then(r => { return load().then(() => say('تم الحفظ: ' + N(r.pct) + '% من إنجاز اليوم.', 'ok')); }).catch(e => { say(esc(msg(e)), 'err'); b.disabled = false; }); }
+
+function rankView() {
+  $('#app').innerHTML = '<h1>الترتيب العام</h1><p class="mut">بالأكواد فقط. عند التعادل: الأطول سلسلة ثم الأسبق تسجيلًا.</p><div id="rk" class="mut">جارٍ التحميل…</div>';
+  api('rank').then(r => { $('#rk').outerHTML = '<div style="display:flex;flex-direction:column;gap:6px">' + r.list.map(x => '<div class="rk' + (x.me ? ' me' : '') + '"><span>' + N(x.rank) + ' · <b dir="ltr">' + esc(x.code) + '</b></span><b>' + N(x.total) + ' نقطة</b></div>').join('') + '</div>' +
+    (r.me && r.me.rank > 100 ? '<div class="rk me"><span>' + N(r.me.rank) + ' · <b dir="ltr">' + esc(r.me.code) + '</b></span><b>' + N(r.me.total) + ' نقطة</b></div>' : ''); })
+  .catch(e => { $('#rk').textContent = msg(e); });
+}
+
+function cardView() {
+  $('#app').innerHTML = '<h1>بطاقة الإنجاز</h1><canvas id="cv" width="1080" height="1350"></canvas><div id="note"></div><div class="row"><button id="share">مشاركة الصورة</button><button id="dl" class="alt">تحميل</button></div>';
+  api('card').then(c => document.fonts.load('800 40px Cairo').then(() => draw(c))).catch(e => say(esc(msg(e)), 'err'));
+  const blob = () => new Promise(res => $('#cv').toBlob(res, 'image/png'));
+  $('#dl').onclick = () => blob().then(b => { const a = document.createElement('a'); a.href = URL.createObjectURL(b); a.download = 'card.png'; a.click(); });
+  $('#share').onclick = () => blob().then(b => { const f = new File([b], 'card.png', {type:'image/png'});
+    if (navigator.canShare && navigator.canShare({files:[f]})) navigator.share({files:[f]}).catch(() => {}); else say('المشاركة غير مدعومة هنا. استخدم زر التحميل ثم شارك الصورة.', 'err'); });
+}
+function draw(c) {
+  const g = $('#cv').getContext('2d'), W = 1080; g.direction = 'rtl'; g.textAlign = 'center';
+  g.fillStyle = '#1E6F5C'; g.fillRect(0, 0, W, 1350);
+  const T = (t, y, sz, w, col) => { g.fillStyle = col || '#fff'; g.font = (w || 600) + ' ' + sz + 'px Cairo'; g.fillText(t, W / 2, y); };
+  T(c.name, 130, 56, 800);
+  g.fillStyle = '#ffffff26'; g.beginPath(); g.roundRect(W / 2 - 170, 175, 340, 84, 42); g.fill(); g.direction = 'ltr'; T(c.code, 235, 54, 800); g.direction = 'rtl';
+  g.lineWidth = 34; g.strokeStyle = '#ffffff33'; g.beginPath(); g.arc(W / 2, 560, 210, 0, 7); g.stroke();
+  g.strokeStyle = '#D9A02B'; g.lineCap = 'round'; g.beginPath(); g.arc(W / 2, 560, 210, -Math.PI / 2, -Math.PI / 2 + 2 * Math.PI * c.pct / 100); g.stroke();
+  T(N(c.pct) + '%', 590, 110, 800); T('إنجاز اليوم', 680, 38);
+  T('اليوم ' + N(c.day) + ' من ' + N(c.duration), 860, 56, 800);
+  [[N(c.earned), 'نقاط اليوم', 810], [N(c.total), 'المجموع', 540], [N(c.streak), 'أيام متتالية', 270]].forEach(s => { g.fillStyle = '#ffffff1f'; g.beginPath(); g.roundRect(s[2] - 125, 930, 250, 170, 28); g.fill(); T(s[0], 1020, 60, 800); g.fillStyle = '#fff'; g.font = '600 32px Cairo'; g.fillText(s[1], s[2], 1075); });
+  T(c.quote, 1230, 44, 600);
+}
+
+function adminView() {
+  $('#app').innerHTML = '<h1>لوحة الإدارة</h1><p class="mut">جارٍ التحميل…</p>';
+  api('adminData').then(a => { S.a = a; const ax = a.axes.map(x => '<option value="' + x.id + '">' + esc(x.name) + '</option>').join('');
+    $('#app').innerHTML = '<h1>لوحة الإدارة</h1><div id="note"></div>' +
+    '<div class="card f"><b>محور جديد</b><input id="axn" placeholder="اسم المحور"><button id="axb">إضافة المحور</button></div>' +
+    '<div class="card f"><b id="tft">مهمة جديدة</b><input type="hidden" id="tid"><label>النوع</label><select id="ty">' + Object.keys(TYPES).map(k => '<option value="' + k + '">' + TYPES[k][0] + '</option>').join('') + '</select>' +
+    '<label>المحور</label><select id="tax">' + ax + '</select><label>الجمهور</label><select id="tau"><option value="all">الجميع</option><option value="student">طلاب</option><option value="other">غير طلاب</option></select>' +
+    '<input id="tti" placeholder="العنوان"><textarea id="tde" placeholder="الوصف"></textarea><div class="row"><input id="tsd" type="number" placeholder="من اليوم"><input id="ted" type="number" placeholder="إلى اليوم"><input id="tpt" type="number" placeholder="النقاط"></div>' +
+    '<input id="tfu" placeholder="معيار الإنجاز الكامل"><input id="tpa" placeholder="معيار الإنجاز الجزئي"><select id="tst"><option value="draft">مسودة</option><option value="published">منشورة</option></select><button id="tsv">حفظ المهمة</button></div>' +
+    '<h2>المهام</h2>' + a.tasks.map(t => '<div class="card row" style="align-items:center"><span>' + esc(t.title) + ' <span class="mut">(' + TYPES[t.type][0] + ' · ' + (t.status === 'published' ? 'منشورة' : 'مسودة') + ')</span></span><button class="alt" style="flex:none" data-edit="' + t.id + '">تعديل</button></div>').join('') +
+    '<h2>المشاركون (' + N(a.participants.length) + ')</h2>' + a.participants.map(p => '<div class="card"><div class="row" style="justify-content:space-between"><b dir="ltr">' + esc(p.code) + '</b><span>' + N(p.total) + ' نقطة</span></div><div class="row" style="margin-top:8px"><select data-st="' + p.id + '">' + ['active','suspended','archived'].map(s => '<option value="' + s + '"' + (p.status === s ? ' selected' : '') + '>' + ({active:'نشط',suspended:'موقوف',archived:'مخفي'})[s] + '</option>').join('') + '</select><button class="alt" data-adj="' + p.id + '">تعديل النقاط</button></div></div>').join('');
+  }).catch(e => { $('#app').innerHTML = '<div class="err">' + esc(msg(e)) + '</div>'; });
+}
+
+document.addEventListener('click', ev => {
+  const t = ev.target.closest('button'); if (!t) return; const ds = t.dataset;
+  if (ds.tab) { S.tab = ds.tab; show(); }
+  else if (ds.t) { S.levels[ds.t] = ds.l; t.parentNode.querySelectorAll('button').forEach(b => b.classList.toggle('on', b === t)); }
+  else if (ds.track) api('setTrack', {track: ds.track}).then(load).catch(e => say(esc(msg(e)), 'err'));
+  else if (t.id === 'send') send();
+  else if (t.id === 'axb') api('addAxis', {name: $('#axn').value}).then(adminView).catch(e => say(esc(msg(e)), 'err'));
+  else if (t.id === 'tsv') api('saveTask', {taskId: $('#tid').value, type: $('#ty').value, axisId: $('#tax').value, audience: $('#tau').value, title: $('#tti').value, desc: $('#tde').value, startDay: $('#tsd').value, endDay: $('#ted').value, points: $('#tpt').value, full: $('#tfu').value, partial: $('#tpa').value, status: $('#tst').value}).then(adminView).catch(e => say(esc(msg(e)), 'err'));
+  else if (ds.edit) { const k = S.a.tasks.find(x => x.id === ds.edit); $('#tft').textContent = 'تعديل مهمة';
+    [['tid', k.id], ['ty', k.type], ['tax', k.axis], ['tau', k.audience], ['tti', k.title], ['tde', k.desc], ['tsd', k.startDay], ['ted', k.endDay], ['tpt', k.points], ['tfu', k.full], ['tpa', k.partial], ['tst', k.status]].forEach(p => $('#' + p[0]).value = p[1] == null ? '' : p[1]); scrollTo(0, 0); }
+  else if (ds.adj) { const amount = prompt('عدد النقاط (سالب للخصم):'); if (!amount) return; const reason = prompt('سبب التعديل (إلزامي):'); if (!reason) return;
+    api('adjust', {target: ds.adj, amount, reason}).then(adminView).catch(e => say(esc(msg(e)), 'err')); }
+});
+document.addEventListener('change', ev => { const s = ev.target.dataset && ev.target.dataset.st; if (!s) return;
+  const reason = prompt('سبب تغيير الحالة (إلزامي):'); if (!reason) return adminView();
+  api('setStatus', {target: s, status: ev.target.value, reason}).then(adminView).catch(e => { say(esc(msg(e)), 'err'); adminView(); }); });
+
+if (tg) { tg.ready(); tg.expand(); }
+load();
+</script>
+</body>
+</html>
